@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ledger"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      LEDGER_TEST_DATABASE_URL: postgresql+psycopg://ledger:ledger@localhost:5432/ledger_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check . && ruff format --check .
+      - run: mypy ledger
+      - run: pytest
+      - name: Migrations match models
+        env:
+          LEDGER_DATABASE_URL: postgresql+psycopg://ledger:ledger@localhost:5432/ledger_test
+        run: alembic check
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ledger:ci .
